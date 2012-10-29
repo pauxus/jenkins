@@ -40,6 +40,7 @@ import hudson.model.AbstractProject;
 import hudson.model.Action;
 import hudson.model.Build;
 import hudson.model.BuildListener;
+import hudson.model.Cause;
 import hudson.model.Cause.UpstreamCause;
 import hudson.model.Computer;
 import hudson.model.Environment;
@@ -59,6 +60,7 @@ import hudson.tasks.BuildStep;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.MailSender;
 import hudson.tasks.Maven.MavenInstallation;
+import hudson.triggers.SCMTrigger.SCMTriggerCause;
 import hudson.util.ArgumentListBuilder;
 import hudson.util.IOUtils;
 import hudson.util.StreamTaskListener;
@@ -658,6 +660,8 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                         
                         Set<ModuleName> changedModules = new TreeSet<ModuleName>();
                         
+                        boolean didPreviousBuildRunForANonSCMCause = didPreviousBuildRunBecauseOfANonSCMCause();
+                        
                         for (MavenModule m : project.sortedActiveModules) {
                             MavenBuild mb = m.newBuild();
                             // JENKINS-8418
@@ -666,11 +670,15 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                             // we act as if incrementalBuild is not set if there are no changes.
                             if (!MavenModuleSetBuild.this.getChangeSet().isEmptySet()
                                 && project.isIncrementalBuild()) {
-                                //If there are changes for this module, add it.
+                                // If there are changes for this module, add it.
                                 // Also add it if we've never seen this module before.
                                 // if the previous build of this module failed or was unstable, this is already added by
-                        	// ChangedModuleAction
+                                // ChangedModuleAction
                                 if ((mb.getPreviousBuiltBuild() == null) || (!getChangeSetFor(m).isEmpty())) {
+                                    changedModules.add(m.getModuleName());
+                                } else if (didPreviousBuildRunForANonSCMCause && mb.getPreviousCompletedBuild().getResult().isWorseThan(Result.SUCCESS)) {
+                                    // if last build was NOT successful (due to an non SCM cause), also add all
+                                    // modules that did not complete successfully since last run
                                     changedModules.add(m.getModuleName());
                                 }
                             }
@@ -721,29 +729,19 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
 
 
                         
-                        // If incrementalBuild is set
-                        // and the previous build didn't specify that we need a full build
-                        // and we're on Maven 2.1 or later
-                        // and there's at least one module listed in changedModules,
-                        // then do the Maven incremental build commands.
-                        // If there are no changed modules, we're building everything anyway.
-                        boolean maven2_1orLater = new ComparableVersion (mavenVersion).compareTo( new ComparableVersion ("2.1") ) >= 0;
-                        
-                        MavenModuleSetBuild prevComplBuild = getPreviousCompletedBuild();
+                        String fullBuildReason = findReasonForDoingAFullBuild(mavenVersion, changedModules);
 			
-                        // if there is no previous completed build, we should always run a full build
-                        boolean needsFullBuild = 
-                        	prevComplBuild == null ||
-                        	prevComplBuild.getAction(NeedsFullBuildAction.class) != null ||
-                        	(prevComplBuild.getResult() != Result.SUCCESS && 
-                        	prevComplBuild.getAction(ChangedModulesAction.class) == null);
-                        
                         ChangedModulesAction combinedChanges = getChangedModulesSinceLastSuccessfulBuild().clone();
                         combinedChanges.addChangedModules(changedModules);
-                        if (project.isIncrementalBuild() && !needsFullBuild && maven2_1orLater && !changedModules.isEmpty()) {
-                            margs.add("-amd");
-                            margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
-                        }
+                        
+                        if (project.isIncrementalBuild()) {
+			    if (fullBuildReason == null) {
+			        margs.add("-amd");
+			        margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
+			    } else {
+				listener.getLogger().println("Doing full build: " + fullBuildReason);
+			    }
+			}
 
                         if (project.isIncrementalBuild()) {
                             // record changed modules
@@ -871,6 +869,68 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                 }
             }
         }
+
+
+	private boolean didPreviousBuildRunBecauseOfANonSCMCause() {
+	    MavenModuleSetBuild prevComplBuild = getPreviousCompletedBuild();
+	    if (prevComplBuild.getResult().isWorseThan(Result.SUCCESS)) {
+	        // If our previous build failed and was not (only) triggered by an scm change, we
+	        // also build ALL modules that did not complete succesfully
+	        for (Cause cause : prevComplBuild.getCauses()) {
+	            if (!(cause instanceof SCMTriggerCause)) {
+	        	return true;
+	            } 
+	        }
+	    }
+	    return false;
+	}
+
+
+	private String findReasonForDoingAFullBuild(String mavenVersion,
+		Set<ModuleName> changedModules) {
+	    // If incrementalBuild is set
+	    // and the previous build didn't specify that we need a full build
+	    // and we're on Maven 2.1 or later
+	    // and there's at least one module listed in changedModules,
+	    // then do the Maven incremental build commands.
+	    // If there are no changed modules, we're building everything anyway.
+	    boolean maven2_1orLater = new ComparableVersion (mavenVersion).compareTo( new ComparableVersion ("2.1") ) >= 0;
+	    
+	    MavenModuleSetBuild prevComplBuild = getPreviousCompletedBuild();
+	    
+	    String fullBuildReason = null;
+	    
+	    if (prevComplBuild == null) {
+	        fullBuildReason = "There is no previous build.";
+	    } else if (prevComplBuild.getAction(NeedsFullBuildAction.class) != null) {
+	        fullBuildReason = "previous run requested full build (POM parsing failed?)";
+	    } 
+	    
+	    
+	    if (fullBuildReason == null && prevComplBuild.getResult() != Result.SUCCESS) {
+	        if (prevComplBuild.getAction(ChangedModulesAction.class) == null) {
+	    	    fullBuildReason = "Previous build did not register changed modules action (Legacy Build?)";
+	        } 
+	    }
+	    
+	    if (fullBuildReason == null) {
+	        for (Cause cause : getCauses()) {
+	            if (!(cause instanceof SCMTriggerCause)) {
+    	    	    	fullBuildReason = "This Build was not triggered by SCM Change: " + cause;
+    	    	    	break;
+    	    	    }
+	        }
+	    }
+
+	    if (fullBuildReason == null && maven2_1orLater) {
+	        fullBuildReason = "Incremental build requires Maven 2.1 or later";
+	    }
+	    
+	    if (fullBuildReason == null && !changedModules.isEmpty()) {
+	        fullBuildReason = "No changed modules";
+	    }
+	    return fullBuildReason;
+	}
 
         
         private boolean build(BuildListener listener, Collection<hudson.tasks.Builder> steps) throws IOException, InterruptedException {
