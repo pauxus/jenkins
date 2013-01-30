@@ -724,13 +724,13 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                         combinedChanges.addChangedModules(changedModules);
                         
                         if (project.isIncrementalBuild()) {
-			    if (fullBuildReason == null) {
-			        margs.add("-amd");
-			        margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
-			    } else {
-				listener.getLogger().println("Doing full build: " + fullBuildReason);
-			    }
-			}
+                  			    if (fullBuildReason == null) {
+                  			        margs.add("-amd");
+                  			        margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
+                  			    } else {
+                  				listener.getLogger().println("Doing full build: " + fullBuildReason);
+                  			    }
+                  			}
 
                         if (project.isIncrementalBuild()) {
                             // record changed modules
@@ -741,15 +741,15 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                             if (IOUtils.isAbsolute(project.getAlternateSettings())) {
                                 margs.add("-s").add(project.getAlternateSettings());
                             } else {
-                                if (LOGGER.isLoggable(Level.FINE)) {
-                                    LOGGER.fine(String.format("Skipping incremental build: needsFullBuild=%s, maven2.1orLater=%s, changedModulesEmpty?=%s",
-                                            needsFullBuild, maven2_1orLater, changedModules.isEmpty()));
-                                }
+                                FilePath mrSettings = getModuleRoot().child(project.getAlternateSettings());
+                                FilePath wsSettings = getWorkspace().child(project.getAlternateSettings());
+                                if (!wsSettings.exists() && mrSettings.exists())
+                                    wsSettings = mrSettings;
+                                
+                                margs.add("-s").add(wsSettings.getRemote());
                             }
                         }
 
-
-                        
                         final List<MavenArgumentInterceptorAction> argInterceptors = this.getBuild().getActions(MavenArgumentInterceptorAction.class);
                         
 						// find the correct maven goals and options, there might by an action overruling the defaults
