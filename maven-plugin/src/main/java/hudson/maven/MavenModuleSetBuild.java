@@ -724,19 +724,16 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
                         combinedChanges.addChangedModules(changedModules);
                         
                         if (project.isIncrementalBuild()) {
-                  			    if (fullBuildReason == null) {
-                  			        margs.add("-amd");
-                  			        margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
-                  			    } else {
-                  				listener.getLogger().println("Doing full build: " + fullBuildReason);
-                  			    }
-                  			}
+              			    if (fullBuildReason == null) {
+              			        margs.add("-amd");
+              			        margs.add("-pl", Util.join(combinedChanges.getChangedModules(), ","));
+              			    } else {
+              			    	listener.getLogger().println("Doing full build: " + fullBuildReason);
+              			    }
+              			    // record changed modules
+              			    addAction(combinedChanges);
+              			}
 
-                        if (project.isIncrementalBuild()) {
-                            // record changed modules
-                            addAction(combinedChanges);
-                        }
-                        
                         if (project.getAlternateSettings() != null) {
                             if (IOUtils.isAbsolute(project.getAlternateSettings())) {
                                 margs.add("-s").add(project.getAlternateSettings());
@@ -849,6 +846,7 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
 
 	private boolean didPreviousBuildRunBecauseOfANonSCMCause() {
 	    MavenModuleSetBuild prevComplBuild = getPreviousCompletedBuild();
+	    if (prevComplBuild == null) return false;
 	    if (prevComplBuild.getResult().isWorseThan(Result.SUCCESS)) {
 	        // If our previous build failed and was not (only) triggered by an scm change, we
 	        // also build ALL modules that did not complete succesfully
@@ -903,7 +901,7 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
 	    }
 	    
 	    if (fullBuildReason == null && !changedModules.isEmpty()) {
-	        fullBuildReason = "No changed modules";
+	        fullBuildReason = "No changed modules found";
 	    }
 	    return fullBuildReason;
 	}
