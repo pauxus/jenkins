@@ -1264,6 +1264,7 @@ public class MavenModuleSet extends AbstractMavenProject<MavenModuleSet,MavenMod
         public boolean configure( StaplerRequest req, JSONObject o ) {
             globalMavenOpts = Util.fixEmptyAndTrim(o.getString("globalMavenOpts"));
             localRepository = req.bindJSON(LocalRepositoryLocator.class,o.getJSONObject("localRepository"));
+            // XXX Incremental Build Providers
             save();
 
             return true;
