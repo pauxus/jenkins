@@ -896,11 +896,11 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
 	        }
 	    }
 
-	    if (fullBuildReason == null && maven2_1orLater) {
+	    if (fullBuildReason == null && !maven2_1orLater) {
 	        fullBuildReason = "Incremental build requires Maven 2.1 or later";
 	    }
 	    
-	    if (fullBuildReason == null && !changedModules.isEmpty()) {
+	    if (fullBuildReason == null && changedModules.isEmpty()) {
 	        fullBuildReason = "No changed modules found";
 	    }
 	    return fullBuildReason;
