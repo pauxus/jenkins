@@ -872,38 +872,31 @@ public class MavenModuleSetBuild extends AbstractMavenBuild<MavenModuleSet,Maven
 	    
 	    MavenModuleSetBuild prevComplBuild = getPreviousCompletedBuild();
 	    
-	    String fullBuildReason = null;
-	    
 	    if (prevComplBuild == null) {
-	        fullBuildReason = "There is no previous build.";
-	    } else if (prevComplBuild.getAction(NeedsFullBuildAction.class) != null) {
-	        fullBuildReason = "previous run requested full build (POM parsing failed?)";
+	        return "There is no previous build.";
+	    } 
+	    if (prevComplBuild.getAction(NeedsFullBuildAction.class) != null) {
+	        return "previous run requested full build (POM parsing failed?)";
 	    } 
 	    
-	    
-	    if (fullBuildReason == null && prevComplBuild.getResult() != Result.SUCCESS) {
-	        if (prevComplBuild.getAction(ChangedModulesAction.class) == null) {
-	    	    fullBuildReason = "Previous build did not register changed modules action (Legacy Build?)";
-	        } 
+	    if (prevComplBuild.getResult() != Result.SUCCESS && prevComplBuild.getAction(ChangedModulesAction.class) == null) {
+    	    return "Previous build did not register changed modules action (Legacy Build?)";
 	    }
 	    
-	    if (fullBuildReason == null) {
-	        for (Cause cause : getCauses()) {
-	            if (!(cause instanceof SCMTriggerCause)) {
-    	    	    	fullBuildReason = "This Build was not triggered by SCM Change: " + cause;
-    	    	    	break;
-    	    	    }
-	        }
-	    }
+        for (Cause cause : getCauses()) {
+            if (!(cause instanceof SCMTriggerCause)) {
+    	    	return "This Build was not triggered by SCM Change: " + cause;
+    	    }
+        }
 
-	    if (fullBuildReason == null && !maven2_1orLater) {
-	        fullBuildReason = "Incremental build requires Maven 2.1 or later";
+	    if (!maven2_1orLater) {
+	        return "Incremental build requires Maven 2.1 or later";
 	    }
 	    
-	    if (fullBuildReason == null && changedModules.isEmpty()) {
-	        fullBuildReason = "No changed modules found";
+	    if (changedModules.isEmpty()) {
+	        return "No changed modules found";
 	    }
-	    return fullBuildReason;
+	    return null;
 	}
 
         
